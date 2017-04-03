@@ -1,9 +1,8 @@
 #!/usr/bin/perl
 
 use strict;
-use warnings;
 
-# use common::sense;
+use common::sense;
 use Getopt::Long;
 use IPC::System::Simple qw(
     capture capturex system systemx run runx $EXITVAL EXIT_ANY
@@ -14,9 +13,6 @@ GetOptions (
 	"username=s" => \my $username,
 	"password=s" => \my $password,
 	"vcserver=s" => \my $vc_server,
-	"warning=i" => \my $warning,
-	"critical=i" => \my $critical,
-	"performance" => \my $performance,
 ) or Error("$0: Error in command line arguments\n");
 
 sub Error {
@@ -24,7 +20,7 @@ sub Error {
     exit 2;
 }
 
-sub vcenter_find {	
+sub vcenter_find {
 	# $vm_name =~ /srv([\w]{2,3})[.]*/i;
 	if ($_[0]){
 		if ($_[0] =~ /sbs/i){
@@ -79,19 +75,19 @@ my $old_vm_name = $vm_name;
 $vm_name = uc($vm_name);
 my $output;
 eval {
-	$output = capture("perl plugins/calaSnapshotSizeForVM.pl --vm $vm_name --username $username --password $password --server $vc_server");
+	$output = capture("perl plugins/vminfo.pl --vmname $vm_name --username $username --password $password --server $vc_server --fields overallStatus");
 };
 if ($@) {
 	eval {
-		$output = capture("perl plugins/calaSnapshotSizeForVM.pl --vm $old_vm_name --username $username --password $password --server $vc_server");
+		$output = capture("perl plugins/vminfo.pl --vmname $old_vm_name --username $username --password $password --server $vc_server --fields overallStatus");
 	};
 	if ($@) {
 		eval {
-			$output = capture("perl plugins/calaSnapshotSizeForVM.pl --vm ".lc($old_vm_name)." --username $username --password $password --server $vc_server");
+			$output = capture("perl plugins/vminfo.pl --vmname ".lc($old_vm_name)." --username $username --password $password --server $vc_server --fields overallStatus");
 		};
 		if ($@) {
 			eval {
-				$output = capture("perl plugins/calaSnapshotSizeForVM.pl --vm ".ucfirst(lc($old_vm_name))." --username $username --password $password --server $vc_server");
+				$output = capture("perl plugins/vminfo.pl --vmname ".ucfirst(lc($old_vm_name))." --username $username --password $password --server $vc_server --fields overallStatus");
 			};
 			if ($@) {
 					print "UNKNOWN: Something went wrong - $@\n";
@@ -101,28 +97,15 @@ if ($@) {
 	}
 }
 
-$output =~ s/(.*)\n/$1/;
+$output =~ /(.*):[\s]+The entity (.*)/;
 
-$output =~ /\(MB\): ([\d]*)/;
-if ($1 > $critical){
-	print "CRITICAL: $output";
-	if ($performance){
-		print " | \"snap_size\"=$1;$warning;$critical";
-	}
-	print "\n";
-	exit(2);
-} elsif ($1 > $warning) {
-	print "WARNING: $output";
-	if ($performance){
-		print " | \"snap_size\"=$1;$warning;$critical";
-	}
-	print "\n";
-	exit(1);
-} else {
-	print "OK: $output";
-	if ($performance){
-		print " | \"snap_size\"=$1;$warning;$critical";
-	}
-	print "\n";
+if ($2 =~ /is OK/){
+	print "OK: Overall status is OK\n";
 	exit(0);
+} elsif ($2 =~ /might have/) {
+	print "WARNING: Overall status is not OK\n";
+	exit(1);
+} elsif ($output =~ /Virtual Machine (.*) not found./){
+	print "UNKNOWN: Virtual machine not found\n";
+	exit(3);
 }
